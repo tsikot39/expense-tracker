@@ -64,11 +64,7 @@ export function SignInForm() {
       }
 
       // Redirect to callbackUrl or dashboard on success
-      // Add a small delay to ensure the session is established
-      setIsLoading(true); // Keep loading state active during redirection
-      setTimeout(() => {
-        window.location.href = callbackUrl;
-      }, 500);
+      router.push(callbackUrl);
     } catch (err) {
       setError('An unexpected error occurred. Please try again.');
       console.error('Sign in error:', err);
