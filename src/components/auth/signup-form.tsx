@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { signIn } from 'next-auth/react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import Link from 'next/link';
+import { debounce } from 'lodash';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,7 +21,7 @@ import {
 } from '@/components/ui/form';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { UserPlus } from 'lucide-react';
+import { UserPlus, User, Mail, Lock, Eye, EyeOff } from 'lucide-react';
 
 // Validation schema
 const signUpSchema = z.object({
@@ -39,6 +40,10 @@ export function SignUpForm() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isCheckingEmail, setIsCheckingEmail] = useState(false);
+  const [emailExists, setEmailExists] = useState(false);
 
   const form = useForm<SignUpFormValues>({
     resolver: zodResolver(signUpSchema),
@@ -50,8 +55,55 @@ export function SignUpForm() {
     },
   });
 
+  // Function to check if email already exists
+  const checkEmailExists = async (email: string) => {
+    if (!email || !email.includes('@')) return;
+
+    try {
+      setIsCheckingEmail(true);
+      setEmailExists(false);
+
+      const response = await fetch('/api/auth/check-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setEmailExists(data.exists);
+      }
+    } catch (err) {
+      console.error('Error checking email:', err);
+    } finally {
+      setIsCheckingEmail(false);
+    }
+  };
+
+  // Debounced version of the email check function
+  const debouncedCheckEmail = debounce(checkEmailExists, 500);
+
+  // Watch for changes to the email field
+  useEffect(() => {
+    const subscription = form.watch((value, { name }) => {
+      if (name === 'email' && value.email) {
+        debouncedCheckEmail(value.email);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [form, debouncedCheckEmail]);
+
   const onSubmit = async (data: SignUpFormValues) => {
     try {
+      // Check if email exists before proceeding
+      if (emailExists) {
+        setError('Email already exists. Please use a different email address.');
+        return;
+      }
+
       setIsLoading(true);
       setError(null);
 
@@ -122,11 +174,15 @@ export function SignUpForm() {
                 <FormItem>
                   <FormLabel>Name</FormLabel>
                   <FormControl>
-                    <Input 
-                      placeholder="Enter your name"
-                      autoComplete="name"
-                      {...field} 
-                    />
+                    <div className="relative">
+                      <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input 
+                        placeholder="Enter your name"
+                        autoComplete="name"
+                        className="pl-10"
+                        {...field} 
+                      />
+                    </div>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -140,14 +196,29 @@ export function SignUpForm() {
                 <FormItem>
                   <FormLabel>Email</FormLabel>
                   <FormControl>
-                    <Input 
-                      placeholder="Enter your email"
-                      type="email" 
-                      autoComplete="email"
-                      {...field} 
-                    />
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input 
+                        placeholder="Enter your email"
+                        type="email" 
+                        autoComplete="email"
+                        className={`pl-10 ${emailExists ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+                        {...field} 
+                      />
+                      {isCheckingEmail && (
+                        <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                          <div className="h-4 w-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                        </div>
+                      )}
+                    </div>
                   </FormControl>
-                  <FormMessage />
+                  <FormMessage>
+                    {emailExists && (
+                      <span className="text-destructive">
+                        Email already exists. Please use a different email address.
+                      </span>
+                    )}
+                  </FormMessage>
                 </FormItem>
               )}
             />
@@ -159,12 +230,29 @@ export function SignUpForm() {
                 <FormItem>
                   <FormLabel>Password</FormLabel>
                   <FormControl>
-                    <Input 
-                      placeholder="Enter your password"
-                      type="password" 
-                      autoComplete="new-password"
-                      {...field} 
-                    />
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input 
+                        placeholder="Enter your password"
+                        type={showPassword ? "text" : "password"} 
+                        autoComplete="new-password"
+                        className="pl-10 pr-10"
+                        {...field} 
+                      />
+                      <button
+                        type="button"
+                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground focus:outline-none"
+                        onClick={() => setShowPassword(!showPassword)}
+                        tabIndex={-1}
+                        aria-label={showPassword ? "Hide password" : "Show password"}
+                      >
+                        {showPassword ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
+                      </button>
+                    </div>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -178,12 +266,29 @@ export function SignUpForm() {
                 <FormItem>
                   <FormLabel>Confirm Password</FormLabel>
                   <FormControl>
-                    <Input 
-                      placeholder="Confirm password"
-                      type="password" 
-                      autoComplete="new-password"
-                      {...field} 
-                    />
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input 
+                        placeholder="Confirm password"
+                        type={showConfirmPassword ? "text" : "password"} 
+                        autoComplete="new-password"
+                        className="pl-10 pr-10"
+                        {...field} 
+                      />
+                      <button
+                        type="button"
+                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground focus:outline-none"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        tabIndex={-1}
+                        aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                      >
+                        {showConfirmPassword ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
+                      </button>
+                    </div>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
